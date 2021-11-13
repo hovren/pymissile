@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # encoding: utf8
 import time
 import threading
@@ -15,6 +16,7 @@ RIGHT = 8
 LEFT = 4
 STOP = 15
 FIRE = 16
+DOWN = 2
 UP = 1
 
 dev = usb.core.find(idVendor=VENDOR, idProduct=PRODUCT)
@@ -24,9 +26,9 @@ if dev is None:
     
 try:
     dev.detach_kernel_driver(0)
-    print "Device unregistered"
-except Exception, e:
-    print "Already unregistered"
+    print("Device unregistered")
+except Exception:
+    print("Already unregistered")
     pass # already unregistered
     
 dev.reset()
@@ -63,7 +65,7 @@ lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_I
 #        try:
 #            self.dev.reset()
 #        except usb.core.USBError, e:
-#            print "RESET ERROR", e
+#            print("RESET ERROR", e)
     
     def read_process(self):
         abort_fire = False
@@ -72,13 +74,13 @@ lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_I
             time.sleep(0.1)
             if self.firing and abort_fire:
                 if time.time() - fire_complete_time > 1.0:
-                    print "Aborting fire"
+                    print("Aborting fire")
                     self.send_command(0)
                     self.firing = False
                     abort_fire = False
 
             data = self.read(8)
-            #print data
+            #print(data)
             if data:
                 a,b = data[:2]
                 RIGHT_LIMIT = (b & 0x08) != 0
@@ -95,29 +97,29 @@ lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_I
                 
                 if LEFT_LIMIT:
                     pass
-                    #print "All the way left"
+                    #print("All the way left")
                 elif RIGHT_LIMIT:
                     pass
-                    #print "All the way right"
+                    #print("All the way right")
                     
                 if FIRE_COMPLETED and self.firing and not abort_fire:
-                    print "Fire aborted"
+                    print("Fire aborted")
                     fire_complete_time = time.time()
                     abort_fire = True
-        print "THREAD STOPPED"
+        print("THREAD STOPPED")
             
     
     def read(self, length):
         try:
             return self.ep.read(length)
-        except usb.core.USBError, e:
+        except usb.core.USBError:
             return None
     
     def send_command(self, command):
         try:
             self.dev.ctrl_transfer(0x21, 0x09, 0x200, 0, [command])            
-        except usb.core.USBError, e:
-            print "SEND ERROR", e
+        except usb.core.USBError as e:
+            print("SEND ERROR", e)
 
 
 #// Control of the launcher works on a binary code – see the table below for an explanation
@@ -147,7 +149,7 @@ lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_I
 
 launcher = Launcher(dev)
 
-print "Starting command loop"
+print("Starting command loop")
 while True:
     prompt = '{} {} {} {} {}'.format(
         'L' if launcher.state['left'] else ' ',
@@ -156,25 +158,31 @@ while True:
         'D' if launcher.state['down'] else ' ',
         'F' if launcher.state['fire'] else ' '
     )
-    s = raw_input('{}>> '.format(prompt)).strip()
-    
     try:
+        s = input('{}>> '.format(prompt)).strip()
         cmd, delay = s.split()
         delay = float(delay)
-    except:
+    except EOFError:
+        cmd = 'quit'
+    except ValueError:
         cmd = s
         delay = 0
     
     if cmd == 'quit':
         break
 
-    if cmd in 'rlu' and delay > 0:
+    if cmd in 'rlud' and delay > 0:
         if cmd == 'r':
             launcher.send_command(RIGHT)
         if cmd == 'l':
             launcher.send_command(LEFT)
         if cmd == 'u':
-            launcher.send_command(UP)
+            if launcher.state['up']:
+                delay = 0
+            else:
+                launcher.send_command(UP)
+        if cmd == 'd':
+            launcher.send_command(DOWN)
         
         time.sleep(delay)
         launcher.send_command(STOP)
@@ -185,6 +193,6 @@ while True:
 
 launcher.running = False        
 
-embed()
+#embed()
 
-print "Done"
+print("Done")
